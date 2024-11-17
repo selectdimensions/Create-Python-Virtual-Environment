@@ -1,3 +1,6 @@
+"""
+_summary_
+"""
 import os
 import sys
 import platform
@@ -10,9 +13,12 @@ from pathlib import Path
 from typing import List, Dict
 
 # Import the VenvCreator class
-from src.venv_creator import VenvCreator
+from venv_creator import VenvCreator
 
 class TestVenvCreator(unittest.TestCase):
+    """
+    _summary_
+    """
     def setUp(self):
         """Set up test environment before each test"""
         self.venv_creator = VenvCreator()
