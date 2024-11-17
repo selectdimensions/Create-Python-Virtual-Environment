@@ -1,0 +1,87 @@
+# Name of the GitHub Actions workflow
+name: Python Virtual Environment Setup CI
+
+# Define when this workflow should run
+on:
+  push:
+    branches: [ main ]  # Trigger on pushes to main branch
+  pull_request:
+    branches: [ main ]  # Trigger on pull requests to main branch
+
+# Define the jobs to run
+jobs:
+  # First job: testing across different OS and Python versions
+  test:
+    # Dynamic OS selection based on matrix strategy
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        # Define test matrix: will run tests on all combinations of these
+        os: [ubuntu-latest, windows-latest, macos-latest]  # Test on all major OS
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']    # Test on multiple Python versions
+
+    steps:
+    # Step 1: Check out the repository code
+    - uses: actions/checkout@v3
+    
+    # Step 2: Set up Python environment
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    # Step 3: Install required Python packages
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip  # Upgrade pip to latest version
+        pip install pytest pytest-cov flake8 # Install testing and linting tools
+        
+    # Step 4: Run code quality checks with flake8
+    - name: Lint with flake8
+      run: |
+        # Check for specific critical errors
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Check overall code quality
+        flake8 . --count --max-complexity=10 --max-line-length=127 --statistics
+        
+    # Step 5: Create a test virtual environment
+    - name: Create test virtual environment
+      run: |
+        python -m venv test_venv
+        
+    # Step 6: Run tests with coverage reporting
+    - name: Test VenvCreator
+      run: |
+        pytest --cov=. --cov-report=xml  # Run tests and generate coverage report
+        
+    # Step 7: Upload coverage reports to Codecov
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml          # Coverage report file
+        flags: unittests             # Tag these results as unit tests
+        fail_ci_if_error: true       # Fail if upload to Codecov fails
+
+  # Second job: security scanning
+  security:
+    runs-on: ubuntu-latest  # Security checks only need to run on one OS
+    steps:
+    # Step 1: Check out the repository code
+    - uses: actions/checkout@v3
+    
+    # Step 2: Set up Python environment
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'  # Use Python 3.10 for security checks
+        
+    # Step 3: Install security scanning tools
+    - name: Install security scanning tools
+      run: |
+        pip install bandit safety  # bandit for code scanning, safety for dependency checking
+        
+    # Step 4: Run security scans
+    - name: Run security scan
+      run: |
+        bandit -r .              # Recursively scan all Python files for security issues
+        safety check             # Check dependencies for known security vulnerabilities
