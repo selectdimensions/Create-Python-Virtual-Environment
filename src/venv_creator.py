@@ -1,14 +1,18 @@
+"""
+_summary_
+"""
 import os
-import subprocess
+import subprocess # nosec B404
 import glob
-import sys
 import platform
 import shutil
-from pathlib import Path
-from typing import List, Dict, Optional, Tuple, Union
+from typing import List, Dict, Optional, Tuple
 
 
 class VenvCreator:
+    """
+    _summary_
+    """
     def __init__(self):
         self.os_type = platform.system().lower()
         self.is_windows = self.os_type == 'windows'
@@ -29,7 +33,7 @@ class VenvCreator:
         """Find all dependency files in the dependencies folder"""
         if not self.dependencies_folder:
             return []
-        
+
         dependency_files = []
         extensions = ['.whl', '.tar.gz', '.zip']
         for ext in extensions:
@@ -53,7 +57,7 @@ class VenvCreator:
             for dep in dependencies:
                 dep_name = os.path.basename(dep)
                 print(f"Installing {dep_name}")
-                result = subprocess.run(
+                result = subprocess.run( # nosec B603
                     [pip_path, 'install', dep],
                     check=True,
                     capture_output=True,
@@ -92,7 +96,7 @@ class VenvCreator:
             "C:\\Program Files\\Python*\\python.exe",
             "C:\\Program Files (x86)\\Python*\\python.exe"
         ]
-        
+
         for search_path in search_paths:
             for path in glob.glob(search_path):
                 version = self.get_python_version(path)
@@ -103,7 +107,7 @@ class VenvCreator:
                 except (ValueError, AttributeError):
                     continue
 
-        return [installation[0] for installation in 
+        return [installation[0] for installation in
                 sorted(installations_with_versions, key=lambda x: x[2])]
 
     def _find_linux_python(self) -> List[str]:
@@ -125,11 +129,12 @@ class VenvCreator:
     def get_python_version(self, python_path: str) -> str:
         """Get Python version for a given Python executable"""
         try:
-            result = subprocess.run(
+            result = subprocess.run( # nosec B603
                 [python_path, '--version'],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
+                check=False
             )
             return result.stdout.strip()
         except (subprocess.SubprocessError, OSError):
@@ -138,7 +143,7 @@ class VenvCreator:
     def create_venv(self, python_path: str, venv_path: str) -> bool:
         """Create virtual environment using specified Python installation"""
         try:
-            result = subprocess.run(
+            result = subprocess.run( # nosec B603
                 [python_path, '-m', 'venv', venv_path],
                 check=True,
                 capture_output=True,
@@ -163,8 +168,8 @@ class VenvCreator:
 
         try:
             missing_files = []
-            with open(requirements_path, 'r') as original:
-                with open(temp_requirements, 'w') as temp:
+            with open(requirements_path, mode='r', encoding='utf-8') as original:
+                with open(temp_requirements, mode='w', encoding='utf-8') as temp:
                     for line in original:
                         line = line.strip()
                         if line.startswith('dependencies/'):
@@ -189,7 +194,7 @@ class VenvCreator:
 
             pip_path = self._get_pip_path(venv_path)
             print("\nInstalling requirements...")
-            result = subprocess.run(
+            result = subprocess.run( # nosec B603
                 [pip_path, 'install', '-r', temp_requirements],
                 check=True,
                 capture_output=True,
@@ -259,7 +264,7 @@ class VenvCreator:
                     break
                 packages.append(package)
             if packages:
-                with open(requirements_path, 'w') as f:
+                with open(requirements_path, mode='w', encoding='utf-8') as f:
                     f.write('\n'.join(packages))
                 project_details['requirements_path'] = requirements_path
 
@@ -268,7 +273,7 @@ class VenvCreator:
     def print_activation_instructions(self, project_path: str, venv_name: str) -> None:
         """Print OS-specific activation instructions"""
         print("\nTo activate the virtual environment:")
-        
+
         activation_cmd = f"source {venv_name}/bin/activate"
         if self.is_windows:
             activation_cmd = f"{venv_name}\\Scripts\\activate"
@@ -342,6 +347,9 @@ class VenvCreator:
 
 
 def main():
+    """
+    _summary_
+    """
     venv_creator = VenvCreator()
     venv_creator.run()
 
