@@ -1,0 +1,13 @@
+# Testing dependencies
+pytest
+pytest-cov
+mypy
+types-setuptools
+
+# Linting tools
+flake8
+black
+isort
+
+# Security tools
+bandit
