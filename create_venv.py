@@ -1,11 +1,3 @@
-"""
-I WANT TO ADD ALL OF THESE BUT I KNOW THIS IS A HUGE LEAP
-Add logging functionality for better debugging
-Include a way to specify Python version requirements
-Add support for pip.conf/pip.ini configuration
-Include option to upgrade pip in new environments
-Add support for conda environments
-"""
 import os
 import subprocess
 import glob
@@ -13,40 +5,43 @@ import sys
 import platform
 import shutil
 from pathlib import Path
+from typing import List, Dict, Optional, Tuple, Union
 
 
 class VenvCreator:
     def __init__(self):
         self.os_type = platform.system().lower()
         self.is_windows = self.os_type == 'windows'
-        self.is_linux = self.os_type in ['linux', 'darwin']  # darwin is macOS
-        self.python_installations = []
+        self.is_linux = self.os_type in ['linux', 'darwin']
+        self.python_installations: List[str] = []
         self.username = self.get_current_username()
-        self.dependencies_folder = None
+        self.dependencies_folder: Optional[str] = None
 
-    def set_dependencies_folder(self, folder_path):
+    def set_dependencies_folder(self, folder_path: str) -> bool:
         """Set the dependencies folder path"""
+        folder_path = os.path.expanduser(folder_path)
         if os.path.exists(folder_path):
             self.dependencies_folder = folder_path
             return True
         return False
 
-    def find_dependencies(self):
+    def find_dependencies(self) -> List[str]:
         """Find all dependency files in the dependencies folder"""
         if not self.dependencies_folder:
             return []
         
         dependency_files = []
-        for ext in ['.whl', '.tar.gz', '.zip']:
+        extensions = ['.whl', '.tar.gz', '.zip']
+        for ext in extensions:
             dependency_files.extend(glob.glob(os.path.join(self.dependencies_folder, f'*{ext}')))
-        return dependency_files
+        return sorted(dependency_files)
 
-    def install_local_dependencies(self, venv_path):
+    def install_local_dependencies(self, venv_path: str) -> Optional[bool]:
         """Install dependencies from local folder"""
         if not self.dependencies_folder:
             return None
 
-        pip_path = os.path.join(venv_path, 'Scripts' if self.is_windows else 'bin', 'pip' + ('.exe' if self.is_windows else ''))
+        pip_path = self._get_pip_path(venv_path)
         dependencies = self.find_dependencies()
 
         if not dependencies:
@@ -56,115 +51,114 @@ class VenvCreator:
         try:
             print("\nInstalling local dependencies...")
             for dep in dependencies:
-                print(f"Installing {os.path.basename(dep)}")
-                subprocess.run([pip_path, 'install', dep], check=True)
+                dep_name = os.path.basename(dep)
+                print(f"Installing {dep_name}")
+                result = subprocess.run(
+                    [pip_path, 'install', dep],
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+                if result.stderr:
+                    print(f"Warning during installation: {result.stderr}")
             return True
         except subprocess.CalledProcessError as e:
             print(f"Error installing local dependencies: {e}")
+            if e.stderr:
+                print(f"Error details: {e.stderr}")
             return False
 
-    def get_current_username(self):
+    def get_current_username(self) -> Optional[str]:
         """Get current username based on OS"""
-        if self.is_windows:
-            return os.getenv('USERNAME')
-        return os.getenv('USER')
+        return os.getenv('USERNAME' if self.is_windows else 'USER')
 
-    def find_python_installations(self):
+    def _get_pip_path(self, venv_path: str) -> str:
+        """Get the pip executable path for the virtual environment"""
+        return os.path.join(
+            venv_path,
+            'Scripts' if self.is_windows else 'bin',
+            'pip' + ('.exe' if self.is_windows else '')
+        )
+
+    def find_python_installations(self) -> List[str]:
         """Find Python installations based on OS"""
-        if self.is_windows:
-            return self._find_windows_python()
-        return self._find_linux_python()
+        return self._find_windows_python() if self.is_windows else self._find_linux_python()
 
-    def _find_windows_python(self):
+    def _find_windows_python(self) -> List[str]:
         """Find Python installations on Windows"""
-        installations_with_versions = []
-        
-        # Search in AppData location
-        appdata_path = f"C:\\Users\\{self.username}\\AppData\\Local\\Programs\\Python\\Python*\\python.exe"
-        program_files_paths = [
+        installations_with_versions: List[Tuple[str, str, Tuple[int, ...]]] = []
+        search_paths = [
+            f"C:\\Users\\{self.username}\\AppData\\Local\\Programs\\Python\\Python*\\python.exe",
             "C:\\Program Files\\Python*\\python.exe",
             "C:\\Program Files (x86)\\Python*\\python.exe"
         ]
         
-        # Collect all potential paths
-        all_paths = []
-        all_paths.extend(glob.glob(appdata_path))
-        for path in program_files_paths:
-            all_paths.extend(glob.glob(path))
+        for search_path in search_paths:
+            for path in glob.glob(search_path):
+                version = self.get_python_version(path)
+                try:
+                    version_numbers = version.replace("Python ", "").split(".")
+                    version_tuple = tuple(int(num) for num in version_numbers)
+                    installations_with_versions.append((path, version, version_tuple))
+                except (ValueError, AttributeError):
+                    continue
 
-        # Create list with version information for sorting
-        for path in all_paths:
-            version = self.get_python_version(path)
-            try:
-                # Extract version numbers from string like "Python 3.10.11"
-                version_numbers = version.replace("Python ", "").split(".")
-                version_tuple = tuple(int(num) for num in version_numbers)
-                installations_with_versions.append((path, version, version_tuple))
-            except Exception:
-                continue
+        return [installation[0] for installation in 
+                sorted(installations_with_versions, key=lambda x: x[2])]
 
-        # Sort by version tuple
-        sorted_installations = sorted(installations_with_versions, key=lambda x: x[2])
-        # Return only the paths in sorted order
-        return [installation[0] for installation in sorted_installations]
-
-    def _find_linux_python(self):
+    def _find_linux_python(self) -> List[str]:
         """Find Python installations on Linux/Unix"""
-        python_installations = []
-
-        # Common Linux Python locations
-        linux_paths = [
+        search_paths = [
             "/usr/bin/python3*",
             "/usr/local/bin/python3*",
             f"/home/{self.username}/.local/bin/python3*"
         ]
 
-        for path in linux_paths:
-            found_paths = glob.glob(path)
-            # Filter out symbolic links and keep only actual executables
-            for p in found_paths:
-                if os.path.isfile(p) and not os.path.islink(p):
-                    python_installations.append(p)
+        python_installations = set()
+        for path_pattern in search_paths:
+            for path in glob.glob(path_pattern):
+                if os.path.isfile(path) and not os.path.islink(path):
+                    python_installations.add(path)
 
-        return sorted(set(python_installations))  # Remove duplicates
+        return sorted(python_installations)
 
-    def get_python_version(self, python_path):
+    def get_python_version(self, python_path: str) -> str:
         """Get Python version for a given Python executable"""
         try:
-            result = subprocess.run([python_path, '--version'], capture_output=True, text=True)
+            result = subprocess.run(
+                [python_path, '--version'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
             return result.stdout.strip()
-        except Exception:
+        except (subprocess.SubprocessError, OSError):
             return "Version unknown"
 
-    def create_venv(self, python_path, venv_path):
+    def create_venv(self, python_path: str, venv_path: str) -> bool:
         """Create virtual environment using specified Python installation"""
         try:
-            subprocess.run([python_path, '-m', 'venv', venv_path], check=True)
+            result = subprocess.run(
+                [python_path, '-m', 'venv', venv_path],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            if result.stderr:
+                print(f"Warning during venv creation: {result.stderr}")
             return True
         except subprocess.CalledProcessError as e:
             print(f"Error creating virtual environment: {e}")
+            if e.stderr:
+                print(f"Error details: {e.stderr}")
             return False
 
-    def install_requirements(self, venv_path, requirements_path=None):
+    def install_requirements(self, venv_path: str, requirements_path: Optional[str] = None) -> Optional[bool]:
         """Install requirements if requirements.txt exists"""
-            # This version:
-            # Checks if each dependency file exists before attempting installation
-            # Maintains a list of missing files
-            # Verifies that existing files are not empty
-            # Provides detailed error messages showing:
-            # Which files are missing
-            # The expected location of missing files
-            # Only proceeds with installation if all required files are present
-            # Handles both general exceptions and specific pip installation errors
-            # Provides more detailed feedback about the installation process
-
         if not requirements_path or not os.path.exists(requirements_path):
             return None
 
-        # Get the project root directory (where requirements.txt is located)
         project_root = os.path.dirname(requirements_path)
-
-        # Create a temporary requirements file with absolute paths
         temp_requirements = os.path.join(project_root, 'temp_requirements.txt')
 
         try:
@@ -174,56 +168,57 @@ class VenvCreator:
                     for line in original:
                         line = line.strip()
                         if line.startswith('dependencies/'):
-                            # Convert relative path to absolute path
-                            relative_path = line
                             absolute_path = os.path.abspath(os.path.join(project_root, line))
-
-                            # Check if file exists
                             if not os.path.exists(absolute_path):
-                                missing_files.append(relative_path)
-                                print(f"Warning: Required file not found: {relative_path}")
+                                missing_files.append(line)
+                                print(f"Warning: Required file not found: {line}")
                                 print(f"Expected location: {absolute_path}")
+                            elif os.path.getsize(absolute_path) == 0:
+                                print(f"Warning: File exists but is empty: {line}")
+                                missing_files.append(line)
                             else:
-                                # Verify if it's a valid file
-                                if os.path.getsize(absolute_path) == 0:
-                                    print(f"Warning: File exists but appears to be empty: {relative_path}")
                                 temp.write(f"{absolute_path}\n")
                         else:
                             temp.write(f"{line}\n")
 
             if missing_files:
-                print("\nMissing dependency files:")
+                print("\nMissing or invalid dependency files:")
                 for file in missing_files:
                     print(f"- {file}")
                 return False
 
-            pip_path = os.path.join(venv_path, 'Scripts' if self.is_windows else 'bin', 'pip' + ('.exe' if self.is_windows else ''))
-
-            print("\nAll dependency files found. Installing requirements...")
-            subprocess.run([pip_path, 'install', '-r', temp_requirements], check=True)
+            pip_path = self._get_pip_path(venv_path)
+            print("\nInstalling requirements...")
+            result = subprocess.run(
+                [pip_path, 'install', '-r', temp_requirements],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            if result.stderr:
+                print(f"Warnings during installation: {result.stderr}")
             return True
 
         except subprocess.CalledProcessError as e:
             print(f"Error installing requirements: {e}")
+            if e.stderr:
+                print(f"Error details: {e.stderr}")
             return False
         except Exception as e:
             print(f"Unexpected error during requirements installation: {e}")
             return False
         finally:
-            # Clean up temporary file
             if os.path.exists(temp_requirements):
                 os.remove(temp_requirements)
 
-    def get_project_details(self):
+    def get_project_details(self) -> Dict[str, str]:
         """Get project details from user"""
-        project_details = {}
+        project_details: Dict[str, str] = {}
 
-        # Get project name
         project_details['name'] = input("\nEnter project name: ").strip()
 
-        # Get project path
         while True:
-            project_path = input("Enter full project path: ").strip().strip('"')
+            project_path = os.path.expanduser(input("Enter full project path: ").strip().strip('"'))
             if os.path.exists(project_path):
                 project_details['path'] = project_path
                 break
@@ -233,83 +228,74 @@ class VenvCreator:
                     os.makedirs(project_path)
                     project_details['path'] = project_path
                     break
-                except Exception as e:
+                except OSError as e:
                     print(f"Error creating directory: {e}")
 
-        # Get virtual environment name
         while True:
-            venv_name = input("Enter virtual environment name (e.g., venv, .venv, project-env): ").strip()
+            venv_name = input("Enter virtual environment name (e.g., venv, .venv): ").strip()
             if venv_name:
                 project_details['venv_name'] = venv_name
                 break
             print("Virtual environment name cannot be empty.")
 
-        # Ask about dependencies folder
-        use_deps = input("Do you want to install dependencies from a local folder? (y/n): ").lower()
-        if use_deps == 'y':
+        if input("Do you want to install dependencies from a local folder? (y/n): ").lower() == 'y':
             while True:
-                deps_path = input("Enter dependencies folder path: ").strip().strip('"')
+                deps_path = os.path.expanduser(input("Enter dependencies folder path: ").strip().strip('"'))
                 if self.set_dependencies_folder(deps_path):
                     project_details['dependencies_path'] = deps_path
                     break
                 print("Invalid dependencies folder path. Please try again.")
 
-        # Handle requirements.txt
         requirements_path = os.path.join(project_path, 'requirements.txt')
         if os.path.exists(requirements_path):
             project_details['requirements_path'] = requirements_path
             print(f"Found requirements.txt at: {requirements_path}")
-        else:
-            create_req = input("No requirements.txt found. Create one? (y/n): ").lower()
-            if create_req == 'y':
-                project_details['create_requirements'] = True
-                print("\nEnter package names (one per line, press Enter twice when done):")
-                packages = []
-                while True:
-                    package = input().strip()
-                    if not package:
-                        break
-                    packages.append(package)
-                if packages:
-                    with open(requirements_path, 'w') as f:
-                        f.write('\n'.join(packages))
-                    project_details['requirements_path'] = requirements_path
+        elif input("No requirements.txt found. Create one? (y/n): ").lower() == 'y':
+            print("\nEnter package names (one per line, press Enter twice when done):")
+            packages = []
+            while True:
+                package = input().strip()
+                if not package:
+                    break
+                packages.append(package)
+            if packages:
+                with open(requirements_path, 'w') as f:
+                    f.write('\n'.join(packages))
+                project_details['requirements_path'] = requirements_path
 
         return project_details
 
-    def print_activation_instructions(self, project_path, venv_name):
+    def print_activation_instructions(self, project_path: str, venv_name: str) -> None:
         """Print OS-specific activation instructions"""
         print("\nTo activate the virtual environment:")
-
+        
+        activation_cmd = f"source {venv_name}/bin/activate"
         if self.is_windows:
-            print(f"cd {project_path}")
-            print(f"{venv_name}\\Scripts\\activate")
-        else:
-            print(f"cd {project_path}")
-            print(f"source {venv_name}/bin/activate")
+            activation_cmd = f"{venv_name}\\Scripts\\activate"
 
-        print("\nAdditional commands:")
-        print("pip list - Show installed packages")
-        print("pip freeze > requirements.txt - Update requirements file")
-        print("deactivate - Exit virtual environment")
+        print(f"cd {project_path}")
+        print(activation_cmd)
 
-    def run(self):
+        print("\nUseful commands:")
+        print("pip list            - Show installed packages")
+        print("pip freeze         - List installed packages in requirements format")
+        print("pip check          - Verify dependencies have compatible versions")
+        print("deactivate         - Exit virtual environment")
+
+    def run(self) -> None:
         """Main execution method"""
         print(f"\n=== Python Virtual Environment Setup ({self.os_type.capitalize()}) ===")
 
-        # Find Python installations
         installations = self.find_python_installations()
         if not installations:
             print("No Python installations found!")
             return
 
-        # Display found Python installations in sorted order
         print("\nFound Python installations:")
         for i, path in enumerate(installations, 1):
             version = self.get_python_version(path)
             print(f"{i}. {path} - {version}")
 
-        # Get user selection for Python version
         while True:
             try:
                 choice = int(input("\nSelect Python installation (enter number): ")) - 1
@@ -320,29 +306,22 @@ class VenvCreator:
             except ValueError:
                 print("Please enter a valid number.")
 
-        # Get project details
         project_details = self.get_project_details()
-
-        # Create virtual environment path
         venv_path = os.path.join(project_details['path'], project_details['venv_name'])
 
-        # Check if venv already exists
         if os.path.exists(venv_path):
-            overwrite = input(f"\nVirtual environment already exists at {venv_path}. Overwrite? (y/n): ").lower()
-            if overwrite == 'y':
+            if input(f"\nVirtual environment already exists at {venv_path}. Overwrite? (y/n): ").lower() == 'y':
                 shutil.rmtree(venv_path)
             else:
                 print("Operation cancelled.")
                 return
 
-        # Create virtual environment
         print(f"\nCreating virtual environment using {selected_python}")
         print(f"Location: {venv_path}")
 
         if self.create_venv(selected_python, venv_path):
             print("\nVirtual environment created successfully!")
 
-            # Install local dependencies if specified
             if self.dependencies_folder:
                 result = self.install_local_dependencies(venv_path)
                 if result:
@@ -350,7 +329,6 @@ class VenvCreator:
                 elif result is False:
                     print("Failed to install local dependencies.")
 
-            # Install requirements if they exist
             if 'requirements_path' in project_details:
                 result = self.install_requirements(venv_path, project_details['requirements_path'])
                 if result:
@@ -358,14 +336,15 @@ class VenvCreator:
                 elif result is False:
                     print("Failed to install requirements.")
 
-            # Print activation instructions
             self.print_activation_instructions(project_details['path'], project_details['venv_name'])
         else:
             print("\nFailed to create virtual environment.")
 
+
 def main():
     venv_creator = VenvCreator()
     venv_creator.run()
+
 
 if __name__ == "__main__":
     main()

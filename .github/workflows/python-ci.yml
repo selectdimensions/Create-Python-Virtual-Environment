@@ -1,87 +1,121 @@
 # Name of the GitHub Actions workflow
-name: Python Virtual Environment Setup CI
+name: Python Virtual Environment Creator Tests
 
-# Define when this workflow should run
+# Define when this workflow should be triggered
 on:
+  # Trigger on push events to main and develop branches
   push:
-    branches: [ main ]  # Trigger on pushes to main branch
+    branches: [ main, develop ]
+  # Trigger on pull requests to main and develop branches  
   pull_request:
-    branches: [ main ]  # Trigger on pull requests to main branch
+    branches: [ main, develop ]
 
-# Define the jobs to run
+# Define the jobs to run as part of this workflow
 jobs:
-  # First job: testing across different OS and Python versions
+  # Job for running tests across different environments
   test:
-    # Dynamic OS selection based on matrix strategy
+    # Dynamic name showing OS and Python version being tested
+    name: Test on ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    # OS to run the job on, pulled from matrix strategy
     runs-on: ${{ matrix.os }}
     strategy:
+      # Continue running other matrix combinations even if one fails
+      fail-fast: false
+      # Define test matrix - will run tests on all combinations of these
       matrix:
-        # Define test matrix: will run tests on all combinations of these
-        os: [ubuntu-latest, windows-latest, macos-latest]  # Test on all major OS
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']    # Test on multiple Python versions
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
 
     steps:
-    # Step 1: Check out the repository code
+    # Check out the repository code
     - uses: actions/checkout@v3
-    
-    # Step 2: Set up Python environment
+
+    # Set up Python environment with specified version
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-    
-    # Step 3: Install required Python packages
+        architecture: x64
+
+    # Install required Python packages for testing
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip  # Upgrade pip to latest version
-        pip install pytest pytest-cov flake8 # Install testing and linting tools
-        
-    # Step 4: Run code quality checks with flake8
-    - name: Lint with flake8
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov mypy types-setuptools
+
+    # Run static type checking with mypy in strict mode
+    - name: Run type checking
       run: |
-        # Check for specific critical errors
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # Check overall code quality
-        flake8 . --count --max-complexity=10 --max-line-length=127 --statistics
-        
-    # Step 5: Create a test virtual environment
-    - name: Create test virtual environment
+        mypy venv_creator.py test_venv_creator.py --strict
+
+    # Run tests with pytest and generate coverage report
+    - name: Run tests with coverage
       run: |
-        python -m venv test_venv
-        
-    # Step 6: Run tests with coverage reporting
-    - name: Test VenvCreator
-      run: |
-        pytest --cov=. --cov-report=xml  # Run tests and generate coverage report
-        
-    # Step 7: Upload coverage reports to Codecov
+        pytest test_venv_creator.py -v --cov=. --cov-report=xml
+
+    # Upload test coverage data to Codecov
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
-        file: ./coverage.xml          # Coverage report file
-        flags: unittests             # Tag these results as unit tests
-        fail_ci_if_error: true       # Fail if upload to Codecov fails
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-${{ matrix.os }}-py${{ matrix.python-version }}
+        fail_ci_if_error: false
 
-  # Second job: security scanning
-  security:
-    runs-on: ubuntu-latest  # Security checks only need to run on one OS
+  # Job for code linting checks
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
     steps:
-    # Step 1: Check out the repository code
+    # Check out repository code
     - uses: actions/checkout@v3
-    
-    # Step 2: Set up Python environment
+
+    # Set up Python 3.11 environment for linting
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.10'  # Use Python 3.10 for security checks
-        
-    # Step 3: Install security scanning tools
-    - name: Install security scanning tools
+        python-version: '3.11'
+
+    # Install linting tools
+    - name: Install dependencies
       run: |
-        pip install bandit safety  # bandit for code scanning, safety for dependency checking
-        
-    # Step 4: Run security scans
-    - name: Run security scan
+        python -m pip install --upgrade pip
+        pip install flake8 black isort
+
+    # Run various linting checks:
+    # - flake8 for code style and errors
+    # - black for code formatting
+    # - isort for import sorting
+    - name: Run linters
       run: |
-        bandit -r .              # Recursively scan all Python files for security issues
-        safety check             # Check dependencies for known security vulnerabilities
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        black . --check
+        isort . --check-only --profile black
+
+  # Job for security vulnerability scanning
+  security:
+    name: Security checks
+    runs-on: ubuntu-latest
+    steps:
+    # Check out repository code
+    - uses: actions/checkout@v3
+
+    # Set up Python 3.11 environment for security checks
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    # Install security scanning tools
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit safety
+
+    # Run security checks:
+    # - bandit for code security issues
+    # - safety for known vulnerabilities in dependencies
+    - name: Run security checks
+      run: |
+        bandit -r . -c pyproject.toml
+        safety check
