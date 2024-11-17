@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Dict
 
 # Import the VenvCreator class
-from create_venv import VenvCreator
+from src.venv_creator import VenvCreator
 
 class TestVenvCreator(unittest.TestCase):
     def setUp(self):

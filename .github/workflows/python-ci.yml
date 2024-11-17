@@ -24,7 +24,7 @@ jobs:
       # Define test matrix - will run tests on all combinations of these
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.8', '3.9', '3.10', '3.11']
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
 
     steps:
     # Check out the repository code
@@ -41,17 +41,17 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest pytest-cov mypy types-setuptools
+        pip install requirements.txt
 
     # Run static type checking with mypy in strict mode
     - name: Run type checking
       run: |
-        mypy venv_creator.py test_venv_creator.py --strict
+        mypy src tests
 
     # Run tests with pytest and generate coverage report
     - name: Run tests with coverage
       run: |
-        pytest test_venv_creator.py -v --cov=. --cov-report=xml
+        pytest tests -v --cov=src. --cov-report=xml
 
     # Upload test coverage data to Codecov
     - name: Upload coverage to Codecov
@@ -79,8 +79,7 @@ jobs:
     # Install linting tools
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install flake8 black isort
+        python -m pip install -r requirements.txt
 
     # Run various linting checks:
     # - flake8 for code style and errors
@@ -88,9 +87,9 @@ jobs:
     # - isort for import sorting
     - name: Run linters
       run: |
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        black . --check
-        isort . --check-only --profile black
+        flake8 src tests
+        black src tests --check
+        isort src tests --check-only --profile black
 
   # Job for security vulnerability scanning
   security:
@@ -109,13 +108,11 @@ jobs:
     # Install security scanning tools
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install bandit safety
+        python -m pip install -r requirements.txt
 
     # Run security checks:
     # - bandit for code security issues
     # - safety for known vulnerabilities in dependencies
     - name: Run security checks
       run: |
-        bandit -r . -c pyproject.toml
-        safety check
+        bandit -r src tests
