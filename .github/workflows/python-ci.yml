@@ -41,7 +41,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install requirements.txt
+        pip install -r requirements.txt
 
     # Run static type checking with mypy in strict mode
     - name: Run type checking
@@ -85,11 +85,11 @@ jobs:
     # - flake8 for code style and errors
     # - black for code formatting
     # - isort for import sorting
-    - name: Run linters
+    - name: Run linters  # noqa: E501
       run: |
         flake8 src tests
         black src tests --check
-        isort src tests --check-only --profile black
+        isort src tests --check-only --profile black  # noqa: E501
 
   # Job for security vulnerability scanning
   security:

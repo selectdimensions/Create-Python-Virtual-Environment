@@ -2,7 +2,7 @@
 _summary_
 """
 import os
-import subprocess # nosec B404
+import subprocess  # nosec B404
 import glob
 import platform
 import shutil
@@ -37,7 +37,8 @@ class VenvCreator:
         dependency_files = []
         extensions = ['.whl', '.tar.gz', '.zip']
         for ext in extensions:
-            dependency_files.extend(glob.glob(os.path.join(self.dependencies_folder, f'*{ext}')))
+            dependency_files.extend(glob.glob(
+                os.path.join(self.dependencies_folder, f'*{ext}')))
         return sorted(dependency_files)
 
     def install_local_dependencies(self, venv_path: str) -> Optional[bool]:
@@ -57,7 +58,7 @@ class VenvCreator:
             for dep in dependencies:
                 dep_name = os.path.basename(dep)
                 print(f"Installing {dep_name}")
-                result = subprocess.run( # nosec B603
+                result = subprocess.run(  # nosec B603
                     [pip_path, 'install', dep],
                     check=True,
                     capture_output=True,
@@ -86,11 +87,13 @@ class VenvCreator:
 
     def find_python_installations(self) -> List[str]:
         """Find Python installations based on OS"""
-        return self._find_windows_python() if self.is_windows else self._find_linux_python()
+        return self._find_windows_python(
+            ) if self.is_windows else self._find_linux_python()
 
     def _find_windows_python(self) -> List[str]:
         """Find Python installations on Windows"""
-        installations_with_versions: List[Tuple[str, str, Tuple[int, ...]]] = []
+        installations_with_versions: List[
+            Tuple[str, str, Tuple[int, ...]]] = []
         search_paths = [
             f"C:\\Users\\{self.username}\\AppData\\Local\\Programs\\Python\\Python*\\python.exe",
             "C:\\Program Files\\Python*\\python.exe",
@@ -129,7 +132,7 @@ class VenvCreator:
     def get_python_version(self, python_path: str) -> str:
         """Get Python version for a given Python executable"""
         try:
-            result = subprocess.run( # nosec B603
+            result = subprocess.run(  # nosec B603
                 [python_path, '--version'],
                 capture_output=True,
                 text=True,
@@ -143,7 +146,7 @@ class VenvCreator:
     def create_venv(self, python_path: str, venv_path: str) -> bool:
         """Create virtual environment using specified Python installation"""
         try:
-            result = subprocess.run( # nosec B603
+            result = subprocess.run(  # nosec B603
                 [python_path, '-m', 'venv', venv_path],
                 check=True,
                 capture_output=True,
@@ -194,7 +197,7 @@ class VenvCreator:
 
             pip_path = self._get_pip_path(venv_path)
             print("\nInstalling requirements...")
-            result = subprocess.run( # nosec B603
+            result = subprocess.run(  # nosec B603
                 [pip_path, 'install', '-r', temp_requirements],
                 check=True,
                 capture_output=True,
